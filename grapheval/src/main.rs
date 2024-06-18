@@ -89,8 +89,9 @@ fn main () -> () {
     let expr = mult;
 
     let context = Context { frame: 0 };
+    let result = expr.evaluate(&context);
 
-    println!("result -> {}", expr.evaluate(&context));
+    println!("result -> {}", result);
     return () // this is unnecessary -- its the default if the scope ends
               // in ';'
 }

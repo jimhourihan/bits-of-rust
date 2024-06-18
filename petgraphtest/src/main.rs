@@ -10,7 +10,7 @@ use std::env;
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 
     
-struct<'a> Node {
+struct Node<'a> {
     name: &'a str,
 }
 

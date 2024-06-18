@@ -41,7 +41,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "tinygraph"
+name = "petgraphtest"
 version = "0.1.0"
 dependencies = [
  "petgraph",

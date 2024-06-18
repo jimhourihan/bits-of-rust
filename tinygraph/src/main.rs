@@ -18,11 +18,7 @@ pub type EdgeVec = Vec<ID>;
 
 impl Edge {
     fn new (id: ID, from_node: ID, to_node: ID) -> Edge {
-        Edge {
-            id: id,
-            from_node: from_node,
-            to_node: to_node
-        }
+        Edge { id, from_node, to_node } // shorthand field init
     }
 }
 
