@@ -1,0 +1,12 @@
+[package]
+name = "calc-rustemo"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rustemo-compiler = "*"
+rustemo = "*"
+regex = { version = "1.10.4", default-features = false, features = ["std", "unicode-perl"] }
+once_cell = "1.19.0"
+colored = "2.1.0"
+typed-arena = { version = "2.0.2" }

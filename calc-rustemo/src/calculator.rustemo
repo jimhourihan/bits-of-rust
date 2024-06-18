@@ -1,0 +1,99 @@
+
+Expr:
+   SequenceExpr
+;
+
+SequenceExpr:
+   TupleExpr+[SemiColon]
+;
+
+TupleExpr:
+   ConditionalExpr+[Comma]
+;
+
+Pattern:
+  Literal
+  | '_'
+;
+
+CaseMatch:
+  'case' Pattern '=>' BinaryExpr
+;
+
+CaseArms:
+   CaseMatch+[Comma] {left}
+;
+
+ConditionalExpr:
+   BinaryExpr
+ | 'if' BinaryExpr 'then' BinaryExpr 'else' BinaryExpr  {IfThenElseExpr, right}
+ | 'match' BinaryExpr '{' CaseArms '}'
+;
+
+BinaryExpr:
+   UnaryExpr
+ | BinaryExpr '||' BinaryExpr		{LogicalOrExpr, 1, left}
+ | BinaryExpr '&&' BinaryExpr		{LogicalAndExpr, 2, left}
+ | BinaryExpr '==' BinaryExpr		{EqExpr, 3, left}
+ | BinaryExpr '!=' BinaryExpr		{NotEqExpr, 3, left}
+ | BinaryExpr '<' BinaryExpr		{LTExpr, 4, left}
+ | BinaryExpr '>' BinaryExpr		{GTExpr, 4, left}
+ | BinaryExpr '<=' BinaryExpr		{LTEqExpr, 4, left}
+ | BinaryExpr '>=' BinaryExpr		{GTEqExpr, 4, left}
+ | BinaryExpr '+' BinaryExpr		{AddExpr, 5, left}
+ | BinaryExpr '-' BinaryExpr		{SubExpr, 5, left}
+ | BinaryExpr '*' BinaryExpr		{MultExpr, 6, left}
+ | BinaryExpr '/' BinaryExpr		{DivExpr, 6, left}
+ | BinaryExpr '%' BinaryExpr		{ModExpr, 6, left}
+ | BinaryExpr '^' BinaryExpr		{ExpExpr, 7, right}
+;
+
+UnaryExpr:
+   Literal
+ | '(' TupleExpr ')'
+ | '{' SequenceExpr '}'
+ | '-' UnaryExpr			{UminusExpr}
+ | '+' UnaryExpr			{UplusExpr}
+ | '!' UnaryExpr			{NotExpr}
+;
+
+Literal:
+   Number
+ | Symbol
+ | 'true'
+ | 'false'
+;
+
+terminals
+Number: /\d+(\.\d+)?/;
+Symbol: /[\w--\d]\w*/;
+LogicAnd: '&&';
+LogicOr: '||';
+Comma: ',';
+Plus: '+';
+Minus: '-';
+Mul: '*';
+Mod: '%';
+Div: '/';
+Exp: '^';
+BeginParen: '(';
+EndParen: ')';
+LessThan: '<';
+GreaterThan: '>';
+LessThanEq: '<=';
+GreaterThanEq: '>=';
+EqualTo: '==';
+NotEqualTo: '!=';
+Not: '!';
+True: 'true';
+False: 'false';
+If: 'if';
+Then: 'then';
+Else: 'else';
+Match: 'match';
+Case: 'case';
+Arrow: '=>';
+BeginCurly: '{';
+EndCurly: '}';
+SemiColon: ';';
+MatchAny: '_';
