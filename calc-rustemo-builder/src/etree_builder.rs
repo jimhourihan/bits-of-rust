@@ -78,7 +78,6 @@ impl<'i> LRBuilder<'i, str, Context<'i>, State, ProdKind, TokenKind>
 		    _context: &mut Context<'i>,
 		    token: Token<'i, str, TokenKind>)
     {
-	dbg!(&token);
         match token.kind {
 	    TokenKind::Number => self.shift_value(Value::Int64(token.value.parse().unwrap())),
 	    TokenKind::Symbol => self.shift_symbol(token.value.to_string()),
@@ -91,19 +90,18 @@ impl<'i> LRBuilder<'i, str, Context<'i>, State, ProdKind, TokenKind>
 		     prod: ProdKind,
 		     _prod_len: usize)
     {
-	dbg!(prod);
         let res = match prod {
 	    ProdKind::ExprExpr => (),
 	    ProdKind::BinaryExprUnary => (),
-	    ProdKind::BinaryExprAdd => self.reduce_binary_op("+"),
-	    ProdKind::BinaryExprSub => self.reduce_binary_op("-"),
-	    ProdKind::BinaryExprMult => self.reduce_binary_op("*"),
-	    ProdKind::BinaryExprDiv => self.reduce_binary_op("/"),
-	    ProdKind::BinaryExprExp => self.reduce_binary_op("^"),
+	    ProdKind::BinaryExprAdd => self.reduce_binary_op("add"),
+	    ProdKind::BinaryExprSub => self.reduce_binary_op("sub"),
+	    ProdKind::BinaryExprMult => self.reduce_binary_op("mult"),
+	    ProdKind::BinaryExprDiv => self.reduce_binary_op("div"),
+	    ProdKind::BinaryExprExp => self.reduce_binary_op("pow"),
 	    ProdKind::UnaryExprLiteral => (),
 	    ProdKind::UnaryExprParen => (),
-	    ProdKind::UnaryExprUminus => self.reduce_unary_op("-"),
-	    ProdKind::UnaryExprUplus => self.reduce_unary_op("+"), // fixme
+	    ProdKind::UnaryExprUminus => self.reduce_unary_op("uminus"),
+	    ProdKind::UnaryExprUplus => self.reduce_unary_op("uplus"), // fixme
 	    ProdKind::LiteralNumber => (),
 	    ProdKind::LiteralSymbol => (),
 	    _ => ()

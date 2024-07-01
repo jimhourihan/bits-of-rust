@@ -190,15 +190,15 @@ macro_rules! expr_func {
     };
 }
 
+fn unoop (a: i64) -> i64 { a }
 fn myexp (a: i64, b: i64) -> i64 {a.pow(b.abs() as u32)}
 
 expr_func!(add, op=+);
-
 expr_func!(sub, op=-);
 expr_func!(mult, op=*);
 expr_func!(div, op=/);
 expr_func!(neg, uop=-);
-//expr_func!(posi, uop=+);
+expr_func!(posi, unoop, 1);
 expr_func!(exp, myexp, 2);
 
 impl Context {
@@ -214,12 +214,13 @@ impl Context {
     }
 
     pub fn init_functions (&mut self) {
-    	self.add_symbol("+".to_string(), SymbolType::Function(EvalFunc(add)));
-	self.add_symbol("-".to_string(), SymbolType::Function(EvalFunc(sub)));
-	self.add_symbol("*".to_string(), SymbolType::Function(EvalFunc(mult)));
-	self.add_symbol("/".to_string(), SymbolType::Function(EvalFunc(div)));
-	//self.add_symbol("-".to_string(), SymbolType::Function(TermFunc(neg)));
-	self.add_symbol("^".to_string(), SymbolType::Function(EvalFunc(exp)));
+    	self.add_symbol("add".to_string(), SymbolType::Function(EvalFunc(add)));
+	self.add_symbol("sub".to_string(), SymbolType::Function(EvalFunc(sub)));
+	self.add_symbol("mult".to_string(), SymbolType::Function(EvalFunc(mult)));
+	self.add_symbol("div".to_string(), SymbolType::Function(EvalFunc(div)));
+	self.add_symbol("uminus".to_string(), SymbolType::Function(EvalFunc(neg)));
+	self.add_symbol("uplus".to_string(), SymbolType::Function(EvalFunc(posi)));
+	self.add_symbol("pow".to_string(), SymbolType::Function(EvalFunc(exp)));
     }
 }
 
@@ -235,9 +236,9 @@ mod tests {
 	let one_id = etree.new_value_term(Value::Int64((1)));
 	let two_id = etree.new_value_term(Value::Int64((2)));
 	let three_id = etree.new_value_term(Value::Int64((3)));
-	let plus_sym = etree.context.get_symbol("+".to_string()).clone();
+	let plus_sym = etree.context.get_symbol("add".to_string()).clone();
 	let added_id = etree.new_symbol_term(plus_sym, vec![one_id, two_id]);
-	let mult_sym = etree.context.get_symbol("*".to_string()).clone();
+	let mult_sym = etree.context.get_symbol("mult".to_string()).clone();
 	let multed_id = etree.new_symbol_term(mult_sym, vec![added_id, three_id]);
 	//let x_sym = etree.context.get_symbol("x".to_string()).clone();
 	//let x_id = etree.new_symbol_term(x_sym, vec![]);
@@ -246,6 +247,6 @@ mod tests {
 
 	let v = etree.eval_root();
 	dbg!(v);
-	dbg!(&etree);
+	//dbg!(&etree);
     }
 }

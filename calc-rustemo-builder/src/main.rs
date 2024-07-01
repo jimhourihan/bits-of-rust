@@ -28,8 +28,6 @@ fn main() {
         .parse(&expression);
 
     let r = etree.eval_root();
-
-    dbg!(etree);
     dbg!(r);
 }
 
