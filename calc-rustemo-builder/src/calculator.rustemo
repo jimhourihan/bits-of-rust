@@ -1,0 +1,36 @@
+
+Expr:
+   BinaryExpr				{Expr}
+;
+
+BinaryExpr:
+   UnaryExpr				{Unary}
+ | BinaryExpr '+' BinaryExpr		{Add, 1, left}
+ | BinaryExpr '-' BinaryExpr		{Sub, 1, left}
+ | BinaryExpr '*' BinaryExpr		{Mult, 2, left}
+ | BinaryExpr '/' BinaryExpr		{Div, 2, left}
+ | BinaryExpr '^' BinaryExpr		{Exp, 3, right}
+;
+
+UnaryExpr:
+   Literal				{Literal}
+ | '(' Expr ')'			        {Paren}
+ | '-' UnaryExpr			{Uminus}
+ | '+' UnaryExpr			{Uplus}
+;
+
+Literal:
+   Number				{Number}
+ | Symbol				{Symbol}
+;
+
+terminals
+Number: /\d+/;
+Symbol: /[\w--\d]\w*/;
+Plus: '+';
+Minus: '-';
+Mul: '*';
+Div: '/';
+Exp: '^';
+BeginParen: '(';
+EndParen: ')';
