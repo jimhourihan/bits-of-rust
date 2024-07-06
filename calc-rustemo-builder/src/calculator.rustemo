@@ -13,15 +13,20 @@ BinaryExpr:
 ;
 
 UnaryExpr:
-   Literal				{Literal}
+   PrimaryExpr				{Primary}
  | '(' Expr ')'			        {Paren}
  | '-' UnaryExpr			{Uminus}
- | '+' UnaryExpr			{Uplus}
+;
+
+PrimaryExpr:
+   Literal                              {Literal}
+ | Symbol				{Symbol}
+ | Symbol '(' Expr ')'			{FunCall1}
+ | Symbol '(' Expr ',' Expr ')'		{FunCall2}
 ;
 
 Literal:
    Number				{Number}
- | Symbol				{Symbol}
 ;
 
 terminals
@@ -34,3 +39,4 @@ Div: '/';
 Exp: '^';
 BeginParen: '(';
 EndParen: ')';
+Comma: ',';

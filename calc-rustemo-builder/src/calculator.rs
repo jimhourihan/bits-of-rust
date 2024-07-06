@@ -18,10 +18,10 @@ use rustemo::debug::{log, logn};
 #[cfg(debug_assertions)]
 use colored::*;
 pub type Input = str;
-const STATE_COUNT: usize = 24usize;
-const MAX_RECOGNIZERS: usize = 7usize;
+const STATE_COUNT: usize = 29usize;
+const MAX_RECOGNIZERS: usize = 9usize;
 #[allow(dead_code)]
-const TERMINAL_COUNT: usize = 10usize;
+const TERMINAL_COUNT: usize = 11usize;
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum TokenKind {
@@ -36,6 +36,7 @@ pub enum TokenKind {
     Exp,
     BeginParen,
     EndParen,
+    Comma,
 }
 use TokenKind as TK;
 impl From<TokenKind> for usize {
@@ -53,12 +54,14 @@ pub enum ProdKind {
     BinaryExprMult,
     BinaryExprDiv,
     BinaryExprExp,
-    UnaryExprLiteral,
+    UnaryExprPrimary,
     UnaryExprParen,
     UnaryExprUminus,
-    UnaryExprUplus,
+    PrimaryExprLiteral,
+    PrimaryExprSymbol,
+    PrimaryExprFunCall1,
+    PrimaryExprFunCall2,
     LiteralNumber,
-    LiteralSymbol,
 }
 use ProdKind as PK;
 impl std::fmt::Debug for ProdKind {
@@ -71,12 +74,18 @@ impl std::fmt::Debug for ProdKind {
             ProdKind::BinaryExprMult => "BinaryExpr: BinaryExpr Mul BinaryExpr",
             ProdKind::BinaryExprDiv => "BinaryExpr: BinaryExpr Div BinaryExpr",
             ProdKind::BinaryExprExp => "BinaryExpr: BinaryExpr Exp BinaryExpr",
-            ProdKind::UnaryExprLiteral => "UnaryExpr: Literal",
+            ProdKind::UnaryExprPrimary => "UnaryExpr: PrimaryExpr",
             ProdKind::UnaryExprParen => "UnaryExpr: BeginParen Expr EndParen",
             ProdKind::UnaryExprUminus => "UnaryExpr: Minus UnaryExpr",
-            ProdKind::UnaryExprUplus => "UnaryExpr: Plus UnaryExpr",
+            ProdKind::PrimaryExprLiteral => "PrimaryExpr: Literal",
+            ProdKind::PrimaryExprSymbol => "PrimaryExpr: Symbol",
+            ProdKind::PrimaryExprFunCall1 => {
+                "PrimaryExpr: Symbol BeginParen Expr EndParen"
+            }
+            ProdKind::PrimaryExprFunCall2 => {
+                "PrimaryExpr: Symbol BeginParen Expr Comma Expr EndParen"
+            }
             ProdKind::LiteralNumber => "Literal: Number",
-            ProdKind::LiteralSymbol => "Literal: Symbol",
         };
         write!(f, "{}", name)
     }
@@ -90,6 +99,7 @@ pub enum NonTermKind {
     Expr,
     BinaryExpr,
     UnaryExpr,
+    PrimaryExpr,
     Literal,
 }
 impl From<ProdKind> for NonTermKind {
@@ -102,12 +112,14 @@ impl From<ProdKind> for NonTermKind {
             ProdKind::BinaryExprMult => NonTermKind::BinaryExpr,
             ProdKind::BinaryExprDiv => NonTermKind::BinaryExpr,
             ProdKind::BinaryExprExp => NonTermKind::BinaryExpr,
-            ProdKind::UnaryExprLiteral => NonTermKind::UnaryExpr,
+            ProdKind::UnaryExprPrimary => NonTermKind::UnaryExpr,
             ProdKind::UnaryExprParen => NonTermKind::UnaryExpr,
             ProdKind::UnaryExprUminus => NonTermKind::UnaryExpr,
-            ProdKind::UnaryExprUplus => NonTermKind::UnaryExpr,
+            ProdKind::PrimaryExprLiteral => NonTermKind::PrimaryExpr,
+            ProdKind::PrimaryExprSymbol => NonTermKind::PrimaryExpr,
+            ProdKind::PrimaryExprFunCall1 => NonTermKind::PrimaryExpr,
+            ProdKind::PrimaryExprFunCall2 => NonTermKind::PrimaryExpr,
             ProdKind::LiteralNumber => NonTermKind::Literal,
-            ProdKind::LiteralSymbol => NonTermKind::Literal,
         }
     }
 }
@@ -118,14 +130,14 @@ pub enum State {
     AUGS0,
     NumberS1,
     SymbolS2,
-    PlusS3,
-    MinusS4,
-    BeginParenS5,
-    ExprS6,
-    BinaryExprS7,
-    UnaryExprS8,
+    MinusS3,
+    BeginParenS4,
+    ExprS5,
+    BinaryExprS6,
+    UnaryExprS7,
+    PrimaryExprS8,
     LiteralS9,
-    UnaryExprS10,
+    BeginParenS10,
     UnaryExprS11,
     ExprS12,
     PlusS13,
@@ -133,12 +145,17 @@ pub enum State {
     MulS15,
     DivS16,
     ExpS17,
-    EndParenS18,
-    BinaryExprS19,
+    ExprS18,
+    EndParenS19,
     BinaryExprS20,
     BinaryExprS21,
     BinaryExprS22,
     BinaryExprS23,
+    BinaryExprS24,
+    EndParenS25,
+    CommaS26,
+    ExprS27,
+    EndParenS28,
 }
 impl StateT for State {
     fn default_layout() -> Option<Self> {
@@ -156,14 +173,14 @@ impl std::fmt::Debug for State {
             State::AUGS0 => "0:AUG",
             State::NumberS1 => "1:Number",
             State::SymbolS2 => "2:Symbol",
-            State::PlusS3 => "3:Plus",
-            State::MinusS4 => "4:Minus",
-            State::BeginParenS5 => "5:BeginParen",
-            State::ExprS6 => "6:Expr",
-            State::BinaryExprS7 => "7:BinaryExpr",
-            State::UnaryExprS8 => "8:UnaryExpr",
+            State::MinusS3 => "3:Minus",
+            State::BeginParenS4 => "4:BeginParen",
+            State::ExprS5 => "5:Expr",
+            State::BinaryExprS6 => "6:BinaryExpr",
+            State::UnaryExprS7 => "7:UnaryExpr",
+            State::PrimaryExprS8 => "8:PrimaryExpr",
             State::LiteralS9 => "9:Literal",
-            State::UnaryExprS10 => "10:UnaryExpr",
+            State::BeginParenS10 => "10:BeginParen",
             State::UnaryExprS11 => "11:UnaryExpr",
             State::ExprS12 => "12:Expr",
             State::PlusS13 => "13:Plus",
@@ -171,12 +188,17 @@ impl std::fmt::Debug for State {
             State::MulS15 => "15:Mul",
             State::DivS16 => "16:Div",
             State::ExpS17 => "17:Exp",
-            State::EndParenS18 => "18:EndParen",
-            State::BinaryExprS19 => "19:BinaryExpr",
+            State::ExprS18 => "18:Expr",
+            State::EndParenS19 => "19:EndParen",
             State::BinaryExprS20 => "20:BinaryExpr",
             State::BinaryExprS21 => "21:BinaryExpr",
             State::BinaryExprS22 => "22:BinaryExpr",
             State::BinaryExprS23 => "23:BinaryExpr",
+            State::BinaryExprS24 => "24:BinaryExpr",
+            State::EndParenS25 => "25:EndParen",
+            State::CommaS26 => "26:Comma",
+            State::ExprS27 => "27:Expr",
+            State::EndParenS28 => "28:EndParen",
         };
         write!(f, "{name}")
     }
@@ -191,9 +213,8 @@ fn action_aug_s0(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> {
     match token_kind {
         TK::Number => Vec::from(&[Shift(State::NumberS1)]),
         TK::Symbol => Vec::from(&[Shift(State::SymbolS2)]),
-        TK::Plus => Vec::from(&[Shift(State::PlusS3)]),
-        TK::Minus => Vec::from(&[Shift(State::MinusS4)]),
-        TK::BeginParen => Vec::from(&[Shift(State::BeginParenS5)]),
+        TK::Minus => Vec::from(&[Shift(State::MinusS3)]),
+        TK::BeginParen => Vec::from(&[Shift(State::BeginParenS4)]),
         _ => vec![],
     }
 }
@@ -206,58 +227,49 @@ fn action_number_s1(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> {
         TK::Div => Vec::from(&[Reduce(PK::LiteralNumber, 1usize)]),
         TK::Exp => Vec::from(&[Reduce(PK::LiteralNumber, 1usize)]),
         TK::EndParen => Vec::from(&[Reduce(PK::LiteralNumber, 1usize)]),
+        TK::Comma => Vec::from(&[Reduce(PK::LiteralNumber, 1usize)]),
         _ => vec![],
     }
 }
 fn action_symbol_s2(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> {
     match token_kind {
-        TK::STOP => Vec::from(&[Reduce(PK::LiteralSymbol, 1usize)]),
-        TK::Plus => Vec::from(&[Reduce(PK::LiteralSymbol, 1usize)]),
-        TK::Minus => Vec::from(&[Reduce(PK::LiteralSymbol, 1usize)]),
-        TK::Mul => Vec::from(&[Reduce(PK::LiteralSymbol, 1usize)]),
-        TK::Div => Vec::from(&[Reduce(PK::LiteralSymbol, 1usize)]),
-        TK::Exp => Vec::from(&[Reduce(PK::LiteralSymbol, 1usize)]),
-        TK::EndParen => Vec::from(&[Reduce(PK::LiteralSymbol, 1usize)]),
+        TK::STOP => Vec::from(&[Reduce(PK::PrimaryExprSymbol, 1usize)]),
+        TK::Plus => Vec::from(&[Reduce(PK::PrimaryExprSymbol, 1usize)]),
+        TK::Minus => Vec::from(&[Reduce(PK::PrimaryExprSymbol, 1usize)]),
+        TK::Mul => Vec::from(&[Reduce(PK::PrimaryExprSymbol, 1usize)]),
+        TK::Div => Vec::from(&[Reduce(PK::PrimaryExprSymbol, 1usize)]),
+        TK::Exp => Vec::from(&[Reduce(PK::PrimaryExprSymbol, 1usize)]),
+        TK::BeginParen => Vec::from(&[Shift(State::BeginParenS10)]),
+        TK::EndParen => Vec::from(&[Reduce(PK::PrimaryExprSymbol, 1usize)]),
+        TK::Comma => Vec::from(&[Reduce(PK::PrimaryExprSymbol, 1usize)]),
         _ => vec![],
     }
 }
-fn action_plus_s3(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> {
+fn action_minus_s3(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> {
     match token_kind {
         TK::Number => Vec::from(&[Shift(State::NumberS1)]),
         TK::Symbol => Vec::from(&[Shift(State::SymbolS2)]),
-        TK::Plus => Vec::from(&[Shift(State::PlusS3)]),
-        TK::Minus => Vec::from(&[Shift(State::MinusS4)]),
-        TK::BeginParen => Vec::from(&[Shift(State::BeginParenS5)]),
+        TK::Minus => Vec::from(&[Shift(State::MinusS3)]),
+        TK::BeginParen => Vec::from(&[Shift(State::BeginParenS4)]),
         _ => vec![],
     }
 }
-fn action_minus_s4(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> {
+fn action_beginparen_s4(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> {
     match token_kind {
         TK::Number => Vec::from(&[Shift(State::NumberS1)]),
         TK::Symbol => Vec::from(&[Shift(State::SymbolS2)]),
-        TK::Plus => Vec::from(&[Shift(State::PlusS3)]),
-        TK::Minus => Vec::from(&[Shift(State::MinusS4)]),
-        TK::BeginParen => Vec::from(&[Shift(State::BeginParenS5)]),
+        TK::Minus => Vec::from(&[Shift(State::MinusS3)]),
+        TK::BeginParen => Vec::from(&[Shift(State::BeginParenS4)]),
         _ => vec![],
     }
 }
-fn action_beginparen_s5(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> {
-    match token_kind {
-        TK::Number => Vec::from(&[Shift(State::NumberS1)]),
-        TK::Symbol => Vec::from(&[Shift(State::SymbolS2)]),
-        TK::Plus => Vec::from(&[Shift(State::PlusS3)]),
-        TK::Minus => Vec::from(&[Shift(State::MinusS4)]),
-        TK::BeginParen => Vec::from(&[Shift(State::BeginParenS5)]),
-        _ => vec![],
-    }
-}
-fn action_expr_s6(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> {
+fn action_expr_s5(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> {
     match token_kind {
         TK::STOP => Vec::from(&[Accept]),
         _ => vec![],
     }
 }
-fn action_binaryexpr_s7(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> {
+fn action_binaryexpr_s6(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> {
     match token_kind {
         TK::STOP => Vec::from(&[Reduce(PK::ExprExpr, 1usize)]),
         TK::Plus => Vec::from(&[Shift(State::PlusS13)]),
@@ -266,10 +278,11 @@ fn action_binaryexpr_s7(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> {
         TK::Div => Vec::from(&[Shift(State::DivS16)]),
         TK::Exp => Vec::from(&[Shift(State::ExpS17)]),
         TK::EndParen => Vec::from(&[Reduce(PK::ExprExpr, 1usize)]),
+        TK::Comma => Vec::from(&[Reduce(PK::ExprExpr, 1usize)]),
         _ => vec![],
     }
 }
-fn action_unaryexpr_s8(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> {
+fn action_unaryexpr_s7(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> {
     match token_kind {
         TK::STOP => Vec::from(&[Reduce(PK::BinaryExprUnary, 1usize)]),
         TK::Plus => Vec::from(&[Reduce(PK::BinaryExprUnary, 1usize)]),
@@ -278,30 +291,42 @@ fn action_unaryexpr_s8(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> {
         TK::Div => Vec::from(&[Reduce(PK::BinaryExprUnary, 1usize)]),
         TK::Exp => Vec::from(&[Reduce(PK::BinaryExprUnary, 1usize)]),
         TK::EndParen => Vec::from(&[Reduce(PK::BinaryExprUnary, 1usize)]),
+        TK::Comma => Vec::from(&[Reduce(PK::BinaryExprUnary, 1usize)]),
+        _ => vec![],
+    }
+}
+fn action_primaryexpr_s8(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> {
+    match token_kind {
+        TK::STOP => Vec::from(&[Reduce(PK::UnaryExprPrimary, 1usize)]),
+        TK::Plus => Vec::from(&[Reduce(PK::UnaryExprPrimary, 1usize)]),
+        TK::Minus => Vec::from(&[Reduce(PK::UnaryExprPrimary, 1usize)]),
+        TK::Mul => Vec::from(&[Reduce(PK::UnaryExprPrimary, 1usize)]),
+        TK::Div => Vec::from(&[Reduce(PK::UnaryExprPrimary, 1usize)]),
+        TK::Exp => Vec::from(&[Reduce(PK::UnaryExprPrimary, 1usize)]),
+        TK::EndParen => Vec::from(&[Reduce(PK::UnaryExprPrimary, 1usize)]),
+        TK::Comma => Vec::from(&[Reduce(PK::UnaryExprPrimary, 1usize)]),
         _ => vec![],
     }
 }
 fn action_literal_s9(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> {
     match token_kind {
-        TK::STOP => Vec::from(&[Reduce(PK::UnaryExprLiteral, 1usize)]),
-        TK::Plus => Vec::from(&[Reduce(PK::UnaryExprLiteral, 1usize)]),
-        TK::Minus => Vec::from(&[Reduce(PK::UnaryExprLiteral, 1usize)]),
-        TK::Mul => Vec::from(&[Reduce(PK::UnaryExprLiteral, 1usize)]),
-        TK::Div => Vec::from(&[Reduce(PK::UnaryExprLiteral, 1usize)]),
-        TK::Exp => Vec::from(&[Reduce(PK::UnaryExprLiteral, 1usize)]),
-        TK::EndParen => Vec::from(&[Reduce(PK::UnaryExprLiteral, 1usize)]),
+        TK::STOP => Vec::from(&[Reduce(PK::PrimaryExprLiteral, 1usize)]),
+        TK::Plus => Vec::from(&[Reduce(PK::PrimaryExprLiteral, 1usize)]),
+        TK::Minus => Vec::from(&[Reduce(PK::PrimaryExprLiteral, 1usize)]),
+        TK::Mul => Vec::from(&[Reduce(PK::PrimaryExprLiteral, 1usize)]),
+        TK::Div => Vec::from(&[Reduce(PK::PrimaryExprLiteral, 1usize)]),
+        TK::Exp => Vec::from(&[Reduce(PK::PrimaryExprLiteral, 1usize)]),
+        TK::EndParen => Vec::from(&[Reduce(PK::PrimaryExprLiteral, 1usize)]),
+        TK::Comma => Vec::from(&[Reduce(PK::PrimaryExprLiteral, 1usize)]),
         _ => vec![],
     }
 }
-fn action_unaryexpr_s10(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> {
+fn action_beginparen_s10(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> {
     match token_kind {
-        TK::STOP => Vec::from(&[Reduce(PK::UnaryExprUplus, 2usize)]),
-        TK::Plus => Vec::from(&[Reduce(PK::UnaryExprUplus, 2usize)]),
-        TK::Minus => Vec::from(&[Reduce(PK::UnaryExprUplus, 2usize)]),
-        TK::Mul => Vec::from(&[Reduce(PK::UnaryExprUplus, 2usize)]),
-        TK::Div => Vec::from(&[Reduce(PK::UnaryExprUplus, 2usize)]),
-        TK::Exp => Vec::from(&[Reduce(PK::UnaryExprUplus, 2usize)]),
-        TK::EndParen => Vec::from(&[Reduce(PK::UnaryExprUplus, 2usize)]),
+        TK::Number => Vec::from(&[Shift(State::NumberS1)]),
+        TK::Symbol => Vec::from(&[Shift(State::SymbolS2)]),
+        TK::Minus => Vec::from(&[Shift(State::MinusS3)]),
+        TK::BeginParen => Vec::from(&[Shift(State::BeginParenS4)]),
         _ => vec![],
     }
 }
@@ -314,12 +339,13 @@ fn action_unaryexpr_s11(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> {
         TK::Div => Vec::from(&[Reduce(PK::UnaryExprUminus, 2usize)]),
         TK::Exp => Vec::from(&[Reduce(PK::UnaryExprUminus, 2usize)]),
         TK::EndParen => Vec::from(&[Reduce(PK::UnaryExprUminus, 2usize)]),
+        TK::Comma => Vec::from(&[Reduce(PK::UnaryExprUminus, 2usize)]),
         _ => vec![],
     }
 }
 fn action_expr_s12(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> {
     match token_kind {
-        TK::EndParen => Vec::from(&[Shift(State::EndParenS18)]),
+        TK::EndParen => Vec::from(&[Shift(State::EndParenS19)]),
         _ => vec![],
     }
 }
@@ -327,9 +353,8 @@ fn action_plus_s13(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> {
     match token_kind {
         TK::Number => Vec::from(&[Shift(State::NumberS1)]),
         TK::Symbol => Vec::from(&[Shift(State::SymbolS2)]),
-        TK::Plus => Vec::from(&[Shift(State::PlusS3)]),
-        TK::Minus => Vec::from(&[Shift(State::MinusS4)]),
-        TK::BeginParen => Vec::from(&[Shift(State::BeginParenS5)]),
+        TK::Minus => Vec::from(&[Shift(State::MinusS3)]),
+        TK::BeginParen => Vec::from(&[Shift(State::BeginParenS4)]),
         _ => vec![],
     }
 }
@@ -337,9 +362,8 @@ fn action_minus_s14(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> {
     match token_kind {
         TK::Number => Vec::from(&[Shift(State::NumberS1)]),
         TK::Symbol => Vec::from(&[Shift(State::SymbolS2)]),
-        TK::Plus => Vec::from(&[Shift(State::PlusS3)]),
-        TK::Minus => Vec::from(&[Shift(State::MinusS4)]),
-        TK::BeginParen => Vec::from(&[Shift(State::BeginParenS5)]),
+        TK::Minus => Vec::from(&[Shift(State::MinusS3)]),
+        TK::BeginParen => Vec::from(&[Shift(State::BeginParenS4)]),
         _ => vec![],
     }
 }
@@ -347,9 +371,8 @@ fn action_mul_s15(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> {
     match token_kind {
         TK::Number => Vec::from(&[Shift(State::NumberS1)]),
         TK::Symbol => Vec::from(&[Shift(State::SymbolS2)]),
-        TK::Plus => Vec::from(&[Shift(State::PlusS3)]),
-        TK::Minus => Vec::from(&[Shift(State::MinusS4)]),
-        TK::BeginParen => Vec::from(&[Shift(State::BeginParenS5)]),
+        TK::Minus => Vec::from(&[Shift(State::MinusS3)]),
+        TK::BeginParen => Vec::from(&[Shift(State::BeginParenS4)]),
         _ => vec![],
     }
 }
@@ -357,9 +380,8 @@ fn action_div_s16(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> {
     match token_kind {
         TK::Number => Vec::from(&[Shift(State::NumberS1)]),
         TK::Symbol => Vec::from(&[Shift(State::SymbolS2)]),
-        TK::Plus => Vec::from(&[Shift(State::PlusS3)]),
-        TK::Minus => Vec::from(&[Shift(State::MinusS4)]),
-        TK::BeginParen => Vec::from(&[Shift(State::BeginParenS5)]),
+        TK::Minus => Vec::from(&[Shift(State::MinusS3)]),
+        TK::BeginParen => Vec::from(&[Shift(State::BeginParenS4)]),
         _ => vec![],
     }
 }
@@ -367,13 +389,19 @@ fn action_exp_s17(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> {
     match token_kind {
         TK::Number => Vec::from(&[Shift(State::NumberS1)]),
         TK::Symbol => Vec::from(&[Shift(State::SymbolS2)]),
-        TK::Plus => Vec::from(&[Shift(State::PlusS3)]),
-        TK::Minus => Vec::from(&[Shift(State::MinusS4)]),
-        TK::BeginParen => Vec::from(&[Shift(State::BeginParenS5)]),
+        TK::Minus => Vec::from(&[Shift(State::MinusS3)]),
+        TK::BeginParen => Vec::from(&[Shift(State::BeginParenS4)]),
         _ => vec![],
     }
 }
-fn action_endparen_s18(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> {
+fn action_expr_s18(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> {
+    match token_kind {
+        TK::EndParen => Vec::from(&[Shift(State::EndParenS25)]),
+        TK::Comma => Vec::from(&[Shift(State::CommaS26)]),
+        _ => vec![],
+    }
+}
+fn action_endparen_s19(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> {
     match token_kind {
         TK::STOP => Vec::from(&[Reduce(PK::UnaryExprParen, 3usize)]),
         TK::Plus => Vec::from(&[Reduce(PK::UnaryExprParen, 3usize)]),
@@ -382,10 +410,11 @@ fn action_endparen_s18(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> {
         TK::Div => Vec::from(&[Reduce(PK::UnaryExprParen, 3usize)]),
         TK::Exp => Vec::from(&[Reduce(PK::UnaryExprParen, 3usize)]),
         TK::EndParen => Vec::from(&[Reduce(PK::UnaryExprParen, 3usize)]),
+        TK::Comma => Vec::from(&[Reduce(PK::UnaryExprParen, 3usize)]),
         _ => vec![],
     }
 }
-fn action_binaryexpr_s19(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> {
+fn action_binaryexpr_s20(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> {
     match token_kind {
         TK::STOP => Vec::from(&[Reduce(PK::BinaryExprAdd, 3usize)]),
         TK::Plus => Vec::from(&[Reduce(PK::BinaryExprAdd, 3usize)]),
@@ -394,10 +423,11 @@ fn action_binaryexpr_s19(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> 
         TK::Div => Vec::from(&[Shift(State::DivS16)]),
         TK::Exp => Vec::from(&[Shift(State::ExpS17)]),
         TK::EndParen => Vec::from(&[Reduce(PK::BinaryExprAdd, 3usize)]),
+        TK::Comma => Vec::from(&[Reduce(PK::BinaryExprAdd, 3usize)]),
         _ => vec![],
     }
 }
-fn action_binaryexpr_s20(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> {
+fn action_binaryexpr_s21(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> {
     match token_kind {
         TK::STOP => Vec::from(&[Reduce(PK::BinaryExprSub, 3usize)]),
         TK::Plus => Vec::from(&[Reduce(PK::BinaryExprSub, 3usize)]),
@@ -406,10 +436,11 @@ fn action_binaryexpr_s20(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> 
         TK::Div => Vec::from(&[Shift(State::DivS16)]),
         TK::Exp => Vec::from(&[Shift(State::ExpS17)]),
         TK::EndParen => Vec::from(&[Reduce(PK::BinaryExprSub, 3usize)]),
+        TK::Comma => Vec::from(&[Reduce(PK::BinaryExprSub, 3usize)]),
         _ => vec![],
     }
 }
-fn action_binaryexpr_s21(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> {
+fn action_binaryexpr_s22(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> {
     match token_kind {
         TK::STOP => Vec::from(&[Reduce(PK::BinaryExprMult, 3usize)]),
         TK::Plus => Vec::from(&[Reduce(PK::BinaryExprMult, 3usize)]),
@@ -418,10 +449,11 @@ fn action_binaryexpr_s21(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> 
         TK::Div => Vec::from(&[Reduce(PK::BinaryExprMult, 3usize)]),
         TK::Exp => Vec::from(&[Shift(State::ExpS17)]),
         TK::EndParen => Vec::from(&[Reduce(PK::BinaryExprMult, 3usize)]),
+        TK::Comma => Vec::from(&[Reduce(PK::BinaryExprMult, 3usize)]),
         _ => vec![],
     }
 }
-fn action_binaryexpr_s22(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> {
+fn action_binaryexpr_s23(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> {
     match token_kind {
         TK::STOP => Vec::from(&[Reduce(PK::BinaryExprDiv, 3usize)]),
         TK::Plus => Vec::from(&[Reduce(PK::BinaryExprDiv, 3usize)]),
@@ -430,10 +462,11 @@ fn action_binaryexpr_s22(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> 
         TK::Div => Vec::from(&[Reduce(PK::BinaryExprDiv, 3usize)]),
         TK::Exp => Vec::from(&[Shift(State::ExpS17)]),
         TK::EndParen => Vec::from(&[Reduce(PK::BinaryExprDiv, 3usize)]),
+        TK::Comma => Vec::from(&[Reduce(PK::BinaryExprDiv, 3usize)]),
         _ => vec![],
     }
 }
-fn action_binaryexpr_s23(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> {
+fn action_binaryexpr_s24(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> {
     match token_kind {
         TK::STOP => Vec::from(&[Reduce(PK::BinaryExprExp, 3usize)]),
         TK::Plus => Vec::from(&[Reduce(PK::BinaryExprExp, 3usize)]),
@@ -442,14 +475,57 @@ fn action_binaryexpr_s23(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> 
         TK::Div => Vec::from(&[Reduce(PK::BinaryExprExp, 3usize)]),
         TK::Exp => Vec::from(&[Shift(State::ExpS17)]),
         TK::EndParen => Vec::from(&[Reduce(PK::BinaryExprExp, 3usize)]),
+        TK::Comma => Vec::from(&[Reduce(PK::BinaryExprExp, 3usize)]),
+        _ => vec![],
+    }
+}
+fn action_endparen_s25(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> {
+    match token_kind {
+        TK::STOP => Vec::from(&[Reduce(PK::PrimaryExprFunCall1, 4usize)]),
+        TK::Plus => Vec::from(&[Reduce(PK::PrimaryExprFunCall1, 4usize)]),
+        TK::Minus => Vec::from(&[Reduce(PK::PrimaryExprFunCall1, 4usize)]),
+        TK::Mul => Vec::from(&[Reduce(PK::PrimaryExprFunCall1, 4usize)]),
+        TK::Div => Vec::from(&[Reduce(PK::PrimaryExprFunCall1, 4usize)]),
+        TK::Exp => Vec::from(&[Reduce(PK::PrimaryExprFunCall1, 4usize)]),
+        TK::EndParen => Vec::from(&[Reduce(PK::PrimaryExprFunCall1, 4usize)]),
+        TK::Comma => Vec::from(&[Reduce(PK::PrimaryExprFunCall1, 4usize)]),
+        _ => vec![],
+    }
+}
+fn action_comma_s26(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> {
+    match token_kind {
+        TK::Number => Vec::from(&[Shift(State::NumberS1)]),
+        TK::Symbol => Vec::from(&[Shift(State::SymbolS2)]),
+        TK::Minus => Vec::from(&[Shift(State::MinusS3)]),
+        TK::BeginParen => Vec::from(&[Shift(State::BeginParenS4)]),
+        _ => vec![],
+    }
+}
+fn action_expr_s27(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> {
+    match token_kind {
+        TK::EndParen => Vec::from(&[Shift(State::EndParenS28)]),
+        _ => vec![],
+    }
+}
+fn action_endparen_s28(token_kind: TokenKind) -> Vec<Action<State, ProdKind>> {
+    match token_kind {
+        TK::STOP => Vec::from(&[Reduce(PK::PrimaryExprFunCall2, 6usize)]),
+        TK::Plus => Vec::from(&[Reduce(PK::PrimaryExprFunCall2, 6usize)]),
+        TK::Minus => Vec::from(&[Reduce(PK::PrimaryExprFunCall2, 6usize)]),
+        TK::Mul => Vec::from(&[Reduce(PK::PrimaryExprFunCall2, 6usize)]),
+        TK::Div => Vec::from(&[Reduce(PK::PrimaryExprFunCall2, 6usize)]),
+        TK::Exp => Vec::from(&[Reduce(PK::PrimaryExprFunCall2, 6usize)]),
+        TK::EndParen => Vec::from(&[Reduce(PK::PrimaryExprFunCall2, 6usize)]),
+        TK::Comma => Vec::from(&[Reduce(PK::PrimaryExprFunCall2, 6usize)]),
         _ => vec![],
     }
 }
 fn goto_aug_s0(nonterm_kind: NonTermKind) -> State {
     match nonterm_kind {
-        NonTermKind::Expr => State::ExprS6,
-        NonTermKind::BinaryExpr => State::BinaryExprS7,
-        NonTermKind::UnaryExpr => State::UnaryExprS8,
+        NonTermKind::Expr => State::ExprS5,
+        NonTermKind::BinaryExpr => State::BinaryExprS6,
+        NonTermKind::UnaryExpr => State::UnaryExprS7,
+        NonTermKind::PrimaryExpr => State::PrimaryExprS8,
         NonTermKind::Literal => State::LiteralS9,
         _ => {
             panic!(
@@ -459,48 +535,54 @@ fn goto_aug_s0(nonterm_kind: NonTermKind) -> State {
         }
     }
 }
-fn goto_plus_s3(nonterm_kind: NonTermKind) -> State {
-    match nonterm_kind {
-        NonTermKind::UnaryExpr => State::UnaryExprS10,
-        NonTermKind::Literal => State::LiteralS9,
-        _ => {
-            panic!(
-                "Invalid terminal kind ({nonterm_kind:?}) for GOTO state ({:?}).",
-                State::PlusS3
-            )
-        }
-    }
-}
-fn goto_minus_s4(nonterm_kind: NonTermKind) -> State {
+fn goto_minus_s3(nonterm_kind: NonTermKind) -> State {
     match nonterm_kind {
         NonTermKind::UnaryExpr => State::UnaryExprS11,
+        NonTermKind::PrimaryExpr => State::PrimaryExprS8,
         NonTermKind::Literal => State::LiteralS9,
         _ => {
             panic!(
                 "Invalid terminal kind ({nonterm_kind:?}) for GOTO state ({:?}).",
-                State::MinusS4
+                State::MinusS3
             )
         }
     }
 }
-fn goto_beginparen_s5(nonterm_kind: NonTermKind) -> State {
+fn goto_beginparen_s4(nonterm_kind: NonTermKind) -> State {
     match nonterm_kind {
         NonTermKind::Expr => State::ExprS12,
-        NonTermKind::BinaryExpr => State::BinaryExprS7,
-        NonTermKind::UnaryExpr => State::UnaryExprS8,
+        NonTermKind::BinaryExpr => State::BinaryExprS6,
+        NonTermKind::UnaryExpr => State::UnaryExprS7,
+        NonTermKind::PrimaryExpr => State::PrimaryExprS8,
         NonTermKind::Literal => State::LiteralS9,
         _ => {
             panic!(
                 "Invalid terminal kind ({nonterm_kind:?}) for GOTO state ({:?}).",
-                State::BeginParenS5
+                State::BeginParenS4
+            )
+        }
+    }
+}
+fn goto_beginparen_s10(nonterm_kind: NonTermKind) -> State {
+    match nonterm_kind {
+        NonTermKind::Expr => State::ExprS18,
+        NonTermKind::BinaryExpr => State::BinaryExprS6,
+        NonTermKind::UnaryExpr => State::UnaryExprS7,
+        NonTermKind::PrimaryExpr => State::PrimaryExprS8,
+        NonTermKind::Literal => State::LiteralS9,
+        _ => {
+            panic!(
+                "Invalid terminal kind ({nonterm_kind:?}) for GOTO state ({:?}).",
+                State::BeginParenS10
             )
         }
     }
 }
 fn goto_plus_s13(nonterm_kind: NonTermKind) -> State {
     match nonterm_kind {
-        NonTermKind::BinaryExpr => State::BinaryExprS19,
-        NonTermKind::UnaryExpr => State::UnaryExprS8,
+        NonTermKind::BinaryExpr => State::BinaryExprS20,
+        NonTermKind::UnaryExpr => State::UnaryExprS7,
+        NonTermKind::PrimaryExpr => State::PrimaryExprS8,
         NonTermKind::Literal => State::LiteralS9,
         _ => {
             panic!(
@@ -512,8 +594,9 @@ fn goto_plus_s13(nonterm_kind: NonTermKind) -> State {
 }
 fn goto_minus_s14(nonterm_kind: NonTermKind) -> State {
     match nonterm_kind {
-        NonTermKind::BinaryExpr => State::BinaryExprS20,
-        NonTermKind::UnaryExpr => State::UnaryExprS8,
+        NonTermKind::BinaryExpr => State::BinaryExprS21,
+        NonTermKind::UnaryExpr => State::UnaryExprS7,
+        NonTermKind::PrimaryExpr => State::PrimaryExprS8,
         NonTermKind::Literal => State::LiteralS9,
         _ => {
             panic!(
@@ -525,8 +608,9 @@ fn goto_minus_s14(nonterm_kind: NonTermKind) -> State {
 }
 fn goto_mul_s15(nonterm_kind: NonTermKind) -> State {
     match nonterm_kind {
-        NonTermKind::BinaryExpr => State::BinaryExprS21,
-        NonTermKind::UnaryExpr => State::UnaryExprS8,
+        NonTermKind::BinaryExpr => State::BinaryExprS22,
+        NonTermKind::UnaryExpr => State::UnaryExprS7,
+        NonTermKind::PrimaryExpr => State::PrimaryExprS8,
         NonTermKind::Literal => State::LiteralS9,
         _ => {
             panic!(
@@ -538,8 +622,9 @@ fn goto_mul_s15(nonterm_kind: NonTermKind) -> State {
 }
 fn goto_div_s16(nonterm_kind: NonTermKind) -> State {
     match nonterm_kind {
-        NonTermKind::BinaryExpr => State::BinaryExprS22,
-        NonTermKind::UnaryExpr => State::UnaryExprS8,
+        NonTermKind::BinaryExpr => State::BinaryExprS23,
+        NonTermKind::UnaryExpr => State::UnaryExprS7,
+        NonTermKind::PrimaryExpr => State::PrimaryExprS8,
         NonTermKind::Literal => State::LiteralS9,
         _ => {
             panic!(
@@ -551,13 +636,29 @@ fn goto_div_s16(nonterm_kind: NonTermKind) -> State {
 }
 fn goto_exp_s17(nonterm_kind: NonTermKind) -> State {
     match nonterm_kind {
-        NonTermKind::BinaryExpr => State::BinaryExprS23,
-        NonTermKind::UnaryExpr => State::UnaryExprS8,
+        NonTermKind::BinaryExpr => State::BinaryExprS24,
+        NonTermKind::UnaryExpr => State::UnaryExprS7,
+        NonTermKind::PrimaryExpr => State::PrimaryExprS8,
         NonTermKind::Literal => State::LiteralS9,
         _ => {
             panic!(
                 "Invalid terminal kind ({nonterm_kind:?}) for GOTO state ({:?}).",
                 State::ExpS17
+            )
+        }
+    }
+}
+fn goto_comma_s26(nonterm_kind: NonTermKind) -> State {
+    match nonterm_kind {
+        NonTermKind::Expr => State::ExprS27,
+        NonTermKind::BinaryExpr => State::BinaryExprS6,
+        NonTermKind::UnaryExpr => State::UnaryExprS7,
+        NonTermKind::PrimaryExpr => State::PrimaryExprS8,
+        NonTermKind::Literal => State::LiteralS9,
+        _ => {
+            panic!(
+                "Invalid terminal kind ({nonterm_kind:?}) for GOTO state ({:?}).",
+                State::CommaS26
             )
         }
     }
@@ -570,14 +671,14 @@ pub(crate) static PARSER_DEFINITION: CalculatorParserDefinition = CalculatorPars
         action_aug_s0,
         action_number_s1,
         action_symbol_s2,
-        action_plus_s3,
-        action_minus_s4,
-        action_beginparen_s5,
-        action_expr_s6,
-        action_binaryexpr_s7,
-        action_unaryexpr_s8,
+        action_minus_s3,
+        action_beginparen_s4,
+        action_expr_s5,
+        action_binaryexpr_s6,
+        action_unaryexpr_s7,
+        action_primaryexpr_s8,
         action_literal_s9,
-        action_unaryexpr_s10,
+        action_beginparen_s10,
         action_unaryexpr_s11,
         action_expr_s12,
         action_plus_s13,
@@ -585,25 +686,30 @@ pub(crate) static PARSER_DEFINITION: CalculatorParserDefinition = CalculatorPars
         action_mul_s15,
         action_div_s16,
         action_exp_s17,
-        action_endparen_s18,
-        action_binaryexpr_s19,
+        action_expr_s18,
+        action_endparen_s19,
         action_binaryexpr_s20,
         action_binaryexpr_s21,
         action_binaryexpr_s22,
         action_binaryexpr_s23,
+        action_binaryexpr_s24,
+        action_endparen_s25,
+        action_comma_s26,
+        action_expr_s27,
+        action_endparen_s28,
     ],
     gotos: [
         goto_aug_s0,
         goto_invalid,
         goto_invalid,
-        goto_plus_s3,
-        goto_minus_s4,
-        goto_beginparen_s5,
+        goto_minus_s3,
+        goto_beginparen_s4,
         goto_invalid,
         goto_invalid,
         goto_invalid,
         goto_invalid,
         goto_invalid,
+        goto_beginparen_s10,
         goto_invalid,
         goto_invalid,
         goto_plus_s13,
@@ -617,16 +723,23 @@ pub(crate) static PARSER_DEFINITION: CalculatorParserDefinition = CalculatorPars
         goto_invalid,
         goto_invalid,
         goto_invalid,
+        goto_invalid,
+        goto_invalid,
+        goto_comma_s26,
+        goto_invalid,
+        goto_invalid,
     ],
     token_kinds: [
         [
-            Some((TK::Plus, true)),
             Some((TK::Minus, true)),
             Some((TK::BeginParen, true)),
             Some((TK::Number, false)),
             Some((TK::Symbol, false)),
             None,
             None,
+            None,
+            None,
+            None,
         ],
         [
             Some((TK::STOP, true)),
@@ -636,6 +749,8 @@ pub(crate) static PARSER_DEFINITION: CalculatorParserDefinition = CalculatorPars
             Some((TK::Div, true)),
             Some((TK::Exp, true)),
             Some((TK::EndParen, true)),
+            Some((TK::Comma, true)),
+            None,
         ],
         [
             Some((TK::STOP, true)),
@@ -644,44 +759,87 @@ pub(crate) static PARSER_DEFINITION: CalculatorParserDefinition = CalculatorPars
             Some((TK::Mul, true)),
             Some((TK::Div, true)),
             Some((TK::Exp, true)),
+            Some((TK::BeginParen, true)),
             Some((TK::EndParen, true)),
+            Some((TK::Comma, true)),
         ],
         [
-            Some((TK::Plus, true)),
             Some((TK::Minus, true)),
             Some((TK::BeginParen, true)),
             Some((TK::Number, false)),
             Some((TK::Symbol, false)),
             None,
             None,
+            None,
+            None,
+            None,
         ],
         [
-            Some((TK::Plus, true)),
             Some((TK::Minus, true)),
             Some((TK::BeginParen, true)),
             Some((TK::Number, false)),
             Some((TK::Symbol, false)),
             None,
             None,
+            None,
+            None,
+            None,
+        ],
+        [Some((TK::STOP, false)), None, None, None, None, None, None, None, None],
+        [
+            Some((TK::STOP, true)),
+            Some((TK::Plus, true)),
+            Some((TK::Minus, true)),
+            Some((TK::Mul, true)),
+            Some((TK::Div, true)),
+            Some((TK::Exp, true)),
+            Some((TK::EndParen, true)),
+            Some((TK::Comma, true)),
+            None,
         ],
         [
+            Some((TK::STOP, true)),
             Some((TK::Plus, true)),
+            Some((TK::Minus, true)),
+            Some((TK::Mul, true)),
+            Some((TK::Div, true)),
+            Some((TK::Exp, true)),
+            Some((TK::EndParen, true)),
+            Some((TK::Comma, true)),
+            None,
+        ],
+        [
+            Some((TK::STOP, true)),
+            Some((TK::Plus, true)),
+            Some((TK::Minus, true)),
+            Some((TK::Mul, true)),
+            Some((TK::Div, true)),
+            Some((TK::Exp, true)),
+            Some((TK::EndParen, true)),
+            Some((TK::Comma, true)),
+            None,
+        ],
+        [
+            Some((TK::STOP, true)),
+            Some((TK::Plus, true)),
+            Some((TK::Minus, true)),
+            Some((TK::Mul, true)),
+            Some((TK::Div, true)),
+            Some((TK::Exp, true)),
+            Some((TK::EndParen, true)),
+            Some((TK::Comma, true)),
+            None,
+        ],
+        [
             Some((TK::Minus, true)),
             Some((TK::BeginParen, true)),
             Some((TK::Number, false)),
             Some((TK::Symbol, false)),
             None,
             None,
-        ],
-        [Some((TK::STOP, false)), None, None, None, None, None, None],
-        [
-            Some((TK::STOP, true)),
-            Some((TK::Plus, true)),
-            Some((TK::Minus, true)),
-            Some((TK::Mul, true)),
-            Some((TK::Div, true)),
-            Some((TK::Exp, true)),
-            Some((TK::EndParen, true)),
+            None,
+            None,
+            None,
         ],
         [
             Some((TK::STOP, true)),
@@ -691,79 +849,75 @@ pub(crate) static PARSER_DEFINITION: CalculatorParserDefinition = CalculatorPars
             Some((TK::Div, true)),
             Some((TK::Exp, true)),
             Some((TK::EndParen, true)),
+            Some((TK::Comma, true)),
+            None,
         ],
+        [Some((TK::EndParen, true)), None, None, None, None, None, None, None, None],
         [
-            Some((TK::STOP, true)),
-            Some((TK::Plus, true)),
-            Some((TK::Minus, true)),
-            Some((TK::Mul, true)),
-            Some((TK::Div, true)),
-            Some((TK::Exp, true)),
-            Some((TK::EndParen, true)),
-        ],
-        [
-            Some((TK::STOP, true)),
-            Some((TK::Plus, true)),
-            Some((TK::Minus, true)),
-            Some((TK::Mul, true)),
-            Some((TK::Div, true)),
-            Some((TK::Exp, true)),
-            Some((TK::EndParen, true)),
-        ],
-        [
-            Some((TK::STOP, true)),
-            Some((TK::Plus, true)),
-            Some((TK::Minus, true)),
-            Some((TK::Mul, true)),
-            Some((TK::Div, true)),
-            Some((TK::Exp, true)),
-            Some((TK::EndParen, true)),
-        ],
-        [Some((TK::EndParen, true)), None, None, None, None, None, None],
-        [
-            Some((TK::Plus, true)),
             Some((TK::Minus, true)),
             Some((TK::BeginParen, true)),
             Some((TK::Number, false)),
             Some((TK::Symbol, false)),
             None,
             None,
+            None,
+            None,
+            None,
         ],
         [
-            Some((TK::Plus, true)),
             Some((TK::Minus, true)),
             Some((TK::BeginParen, true)),
             Some((TK::Number, false)),
             Some((TK::Symbol, false)),
             None,
             None,
+            None,
+            None,
+            None,
         ],
         [
-            Some((TK::Plus, true)),
             Some((TK::Minus, true)),
             Some((TK::BeginParen, true)),
             Some((TK::Number, false)),
             Some((TK::Symbol, false)),
             None,
             None,
+            None,
+            None,
+            None,
         ],
         [
-            Some((TK::Plus, true)),
             Some((TK::Minus, true)),
             Some((TK::BeginParen, true)),
             Some((TK::Number, false)),
             Some((TK::Symbol, false)),
             None,
             None,
+            None,
+            None,
+            None,
         ],
         [
-            Some((TK::Plus, true)),
             Some((TK::Minus, true)),
             Some((TK::BeginParen, true)),
             Some((TK::Number, false)),
             Some((TK::Symbol, false)),
             None,
             None,
+            None,
+            None,
+            None,
+        ],
+        [
+            Some((TK::EndParen, true)),
+            Some((TK::Comma, true)),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
         ],
         [
             Some((TK::STOP, true)),
@@ -773,6 +927,8 @@ pub(crate) static PARSER_DEFINITION: CalculatorParserDefinition = CalculatorPars
             Some((TK::Div, true)),
             Some((TK::Exp, true)),
             Some((TK::EndParen, true)),
+            Some((TK::Comma, true)),
+            None,
         ],
         [
             Some((TK::STOP, true)),
@@ -782,6 +938,8 @@ pub(crate) static PARSER_DEFINITION: CalculatorParserDefinition = CalculatorPars
             Some((TK::Div, true)),
             Some((TK::Exp, true)),
             Some((TK::EndParen, true)),
+            Some((TK::Comma, true)),
+            None,
         ],
         [
             Some((TK::STOP, true)),
@@ -791,6 +949,8 @@ pub(crate) static PARSER_DEFINITION: CalculatorParserDefinition = CalculatorPars
             Some((TK::Div, true)),
             Some((TK::Exp, true)),
             Some((TK::EndParen, true)),
+            Some((TK::Comma, true)),
+            None,
         ],
         [
             Some((TK::STOP, true)),
@@ -800,6 +960,8 @@ pub(crate) static PARSER_DEFINITION: CalculatorParserDefinition = CalculatorPars
             Some((TK::Div, true)),
             Some((TK::Exp, true)),
             Some((TK::EndParen, true)),
+            Some((TK::Comma, true)),
+            None,
         ],
         [
             Some((TK::STOP, true)),
@@ -809,6 +971,8 @@ pub(crate) static PARSER_DEFINITION: CalculatorParserDefinition = CalculatorPars
             Some((TK::Div, true)),
             Some((TK::Exp, true)),
             Some((TK::EndParen, true)),
+            Some((TK::Comma, true)),
+            None,
         ],
         [
             Some((TK::STOP, true)),
@@ -818,6 +982,42 @@ pub(crate) static PARSER_DEFINITION: CalculatorParserDefinition = CalculatorPars
             Some((TK::Div, true)),
             Some((TK::Exp, true)),
             Some((TK::EndParen, true)),
+            Some((TK::Comma, true)),
+            None,
+        ],
+        [
+            Some((TK::STOP, true)),
+            Some((TK::Plus, true)),
+            Some((TK::Minus, true)),
+            Some((TK::Mul, true)),
+            Some((TK::Div, true)),
+            Some((TK::Exp, true)),
+            Some((TK::EndParen, true)),
+            Some((TK::Comma, true)),
+            None,
+        ],
+        [
+            Some((TK::Minus, true)),
+            Some((TK::BeginParen, true)),
+            Some((TK::Number, false)),
+            Some((TK::Symbol, false)),
+            None,
+            None,
+            None,
+            None,
+            None,
+        ],
+        [Some((TK::EndParen, true)), None, None, None, None, None, None, None, None],
+        [
+            Some((TK::STOP, true)),
+            Some((TK::Plus, true)),
+            Some((TK::Minus, true)),
+            Some((TK::Mul, true)),
+            Some((TK::Div, true)),
+            Some((TK::Exp, true)),
+            Some((TK::EndParen, true)),
+            Some((TK::Comma, true)),
+            None,
         ],
     ],
 };
@@ -988,4 +1188,5 @@ pub(crate) static RECOGNIZERS: [TokenRecognizer; TERMINAL_COUNT] = [
     TokenRecognizer(TokenKind::Exp, Recognizer::StrMatch("^")),
     TokenRecognizer(TokenKind::BeginParen, Recognizer::StrMatch("(")),
     TokenRecognizer(TokenKind::EndParen, Recognizer::StrMatch(")")),
+    TokenRecognizer(TokenKind::Comma, Recognizer::StrMatch(",")),
 ];

@@ -22,33 +22,19 @@ impl<'a> ETreeBuilder<'a> {
 	self.stack.push(self.etree.next_id());
     }
 
-    // pub fn pop1 (&mut self) -> Option<TermID> { self.stack.pop() }
-
-    // pub fn pop2 (&mut self) -> Option<(TermID,TermID)> {
-    // 	let a = self.stack.pop().unwrap();
-    // 	let b = self.stack.pop().unwrap();
-    // 	Option::Some((a,b))
-    // }
-
-    // pub fn pop3 (&mut self) -> Option<(TermID,TermID,TermID)> {
-    // 	let a = self.stack.pop().unwrap();
-    // 	let b = self.stack.pop().unwrap();
-    // 	let c = self.stack.pop().unwrap();
-    // 	Option::Some((a,b,c))
-    // }
-
-    pub fn reduce_unary_op (&mut self, op_name: &str) {
-	let op_sym = self.etree.context.get_symbol(op_name.to_string()).clone();
-	let a_id = self.stack.pop().unwrap();
-	let func_id = self.etree.new_symbol_term(op_sym, vec![a_id]);
-	self.stack.push(func_id);
+    pub fn reduce_func1 (&mut self, func_name: &str) {
+	if let Some(sym) = self.etree.context.find_symbol(func_name) {
+	    let a_id = self.stack.pop().unwrap();
+	    let func_id = self.etree.new_symbol_term(sym, vec![a_id]);
+	    self.stack.push(func_id);
+	} 
     }
 
-    pub fn reduce_binary_op (&mut self, op_name: &str) {
-	let op_sym = self.etree.context.get_symbol(op_name.to_string()).clone();
+    pub fn reduce_func2 (&mut self, func_name: &str) {
+	let sym = self.etree.context.find_symbol(func_name).unwrap(); // FIXME
 	let b_id = self.stack.pop().unwrap();
 	let a_id = self.stack.pop().unwrap();
-	let func_id = self.etree.new_symbol_term(op_sym, vec![a_id, b_id]);
+	let func_id = self.etree.new_symbol_term(sym, vec![a_id, b_id]);
 	self.stack.push(func_id);
     }
 
@@ -57,11 +43,17 @@ impl<'a> ETreeBuilder<'a> {
 	self.etree.new_value_term(val);
     }
 
-    pub fn shift_symbol (&mut self, name: String) {
-	let symbol = Rc::new(Symbol::new(name, SymbolType::Symbol));
-	let args: Vec<TermID> = Vec::new();
-	self.push_next();
-	self.etree.new_symbol_term(symbol, args);
+    pub fn shift_symbol (&mut self, name: &str) {
+	if let Some(symbol) = self.etree.context.find_symbol(name) {
+	    let args: Vec<TermID> = Vec::new();
+	    self.push_next();
+	    self.etree.new_symbol_term(symbol, args);
+	} else {
+	    let symbol = Rc::new(Symbol::new(name, SymbolType::Symbol));
+	    let args: Vec<TermID> = Vec::new();
+	    self.push_next();
+	    self.etree.new_symbol_term(symbol, args);
+	}
     }
 
 }
@@ -80,7 +72,7 @@ impl<'i> LRBuilder<'i, str, Context<'i>, State, ProdKind, TokenKind>
     {
         match token.kind {
 	    TokenKind::Number => self.shift_value(Value::Int64(token.value.parse().unwrap())),
-	    TokenKind::Symbol => self.shift_symbol(token.value.to_string()),
+	    TokenKind::Symbol => self.shift_symbol(token.value),
 	    _ => ()
 	}
     }
@@ -93,17 +85,19 @@ impl<'i> LRBuilder<'i, str, Context<'i>, State, ProdKind, TokenKind>
         let res = match prod {
 	    ProdKind::ExprExpr => (),
 	    ProdKind::BinaryExprUnary => (),
-	    ProdKind::BinaryExprAdd => self.reduce_binary_op("add"),
-	    ProdKind::BinaryExprSub => self.reduce_binary_op("sub"),
-	    ProdKind::BinaryExprMult => self.reduce_binary_op("mult"),
-	    ProdKind::BinaryExprDiv => self.reduce_binary_op("div"),
-	    ProdKind::BinaryExprExp => self.reduce_binary_op("pow"),
-	    ProdKind::UnaryExprLiteral => (),
+	    ProdKind::BinaryExprAdd => self.reduce_func2("add"),
+	    ProdKind::BinaryExprSub => self.reduce_func2("sub"),
+	    ProdKind::BinaryExprMult => self.reduce_func2("mul"),
+	    ProdKind::BinaryExprDiv => self.reduce_func2("div"),
+	    ProdKind::BinaryExprExp => self.reduce_func2("pow"),
+	    ProdKind::UnaryExprPrimary => (),
 	    ProdKind::UnaryExprParen => (),
-	    ProdKind::UnaryExprUminus => self.reduce_unary_op("uminus"),
-	    ProdKind::UnaryExprUplus => self.reduce_unary_op("uplus"), // fixme
+	    ProdKind::UnaryExprUminus => self.reduce_func1("neg"),
 	    ProdKind::LiteralNumber => (),
-	    ProdKind::LiteralSymbol => (),
+	    ProdKind::PrimaryExprSymbol => (),
+	    ProdKind::PrimaryExprFunCall1 => (),
+	    ProdKind::PrimaryExprFunCall2 => (),
+	    ProdKind::LiteralNumber => (),
 	    _ => ()
 	};
     }

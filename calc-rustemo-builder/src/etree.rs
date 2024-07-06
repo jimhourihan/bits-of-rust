@@ -3,11 +3,10 @@
 #![allow(unused_lifetimes)]
 #![allow(dead_code)]
 
-use std::env;
+use std::{env, marker};
 use std::rc::Rc;
 use std::collections::HashMap;
 use std::cell::{RefCell,Ref,RefMut};
-use std::marker;
 use std::ops::{Add,Sub,Mul,Div};
 
 #[derive(Debug,Clone)]
@@ -51,7 +50,6 @@ pub struct EvalFunc(fn(&EvalContext,&[Term],&Term,&[TermID])->Value);
 #[derive(Debug,Clone)]
 pub enum SymbolType {
     Symbol,
-    Type,
     Function(EvalFunc),
     Variable,
 }
@@ -127,8 +125,8 @@ impl ExprTree {
 }
 
 impl Symbol {
-    pub fn new (name: String, symbol_type: SymbolType) -> Self {
-	Self { name, symbol_type }
+    pub fn new (name: &str, symbol_type: SymbolType) -> Self {
+	Self { name: name.to_string(), symbol_type }
     }
 }
 
@@ -191,7 +189,7 @@ macro_rules! expr_func {
 }
 
 fn unoop (a: i64) -> i64 { a }
-fn myexp (a: i64, b: i64) -> i64 {a.pow(b.abs() as u32)}
+fn myexp (a: i64, b: i64) -> i64 { a.pow(b.abs() as u32) }
 
 expr_func!(add, op=+);
 expr_func!(sub, op=-);
@@ -205,21 +203,24 @@ impl Context {
     pub fn new () -> Self { Self {symbols: HashMap::default()} }
 
     pub fn add_symbol (&mut self, name: String, symbol_type: SymbolType) {
-	let s = Symbol::new(name.to_string(), symbol_type);
+	let s = Symbol::new(&name, symbol_type);
 	self.symbols.insert(name, Rc::new(s));
     }
 
-    pub fn get_symbol (&self, name: String) -> &Rc<Symbol> {
-	self.symbols.get(&name).unwrap()
+    pub fn find_symbol (&self, name: &str) -> Option<Rc<Symbol>> {
+	if let Some(sym_ref) = self.symbols.get(name) {
+	    Some(sym_ref.clone())
+	} else {
+	    None
+	}
     }
 
     pub fn init_functions (&mut self) {
     	self.add_symbol("add".to_string(), SymbolType::Function(EvalFunc(add)));
 	self.add_symbol("sub".to_string(), SymbolType::Function(EvalFunc(sub)));
-	self.add_symbol("mult".to_string(), SymbolType::Function(EvalFunc(mult)));
+	self.add_symbol("mul".to_string(), SymbolType::Function(EvalFunc(mult)));
 	self.add_symbol("div".to_string(), SymbolType::Function(EvalFunc(div)));
-	self.add_symbol("uminus".to_string(), SymbolType::Function(EvalFunc(neg)));
-	self.add_symbol("uplus".to_string(), SymbolType::Function(EvalFunc(posi)));
+	self.add_symbol("neg".to_string(), SymbolType::Function(EvalFunc(neg)));
 	self.add_symbol("pow".to_string(), SymbolType::Function(EvalFunc(exp)));
     }
 }
@@ -236,9 +237,9 @@ mod tests {
 	let one_id = etree.new_value_term(Value::Int64((1)));
 	let two_id = etree.new_value_term(Value::Int64((2)));
 	let three_id = etree.new_value_term(Value::Int64((3)));
-	let plus_sym = etree.context.get_symbol("add".to_string()).clone();
+	let plus_sym = etree.context.find_symbol("add".to_string()).unwrap();
+	let mult_sym = etree.context.find_symbol("mul".to_string()).unwrap();
 	let added_id = etree.new_symbol_term(plus_sym, vec![one_id, two_id]);
-	let mult_sym = etree.context.get_symbol("mult".to_string()).clone();
 	let multed_id = etree.new_symbol_term(mult_sym, vec![added_id, three_id]);
 	//let x_sym = etree.context.get_symbol("x".to_string()).clone();
 	//let x_id = etree.new_symbol_term(x_sym, vec![]);
