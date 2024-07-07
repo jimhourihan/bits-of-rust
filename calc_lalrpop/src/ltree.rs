@@ -9,6 +9,7 @@ use crate::context::{Symbol,Context};
 use crate::value::Value;
 
 #[derive(Debug,Clone)]
+/// Initial AST structure compiled by parser
 pub enum LTerm {
     ValueTerm(Value),
     DerefTerm(String),
@@ -17,6 +18,8 @@ pub enum LTerm {
         args: Vec<LTerm>
     },
 }
+
+// Parser noise reduction
 
 pub fn lterm_app (sym_name: &str, args: Vec<LTerm>) -> Box<LTerm> {
     Box::new(LTerm::ApplicationTerm { symbol: sym_name.to_string(), args })

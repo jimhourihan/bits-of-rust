@@ -8,7 +8,7 @@ mod ltree;
 
 fn main () {
     let expr = calc::ExprParser::new()
-        .parse("-1 + 2 ^ x * 3")
+        .parse("add( 1 + -5, '(2 ^ x * 3) )")
         .unwrap();
     dbg!(expr);
 }

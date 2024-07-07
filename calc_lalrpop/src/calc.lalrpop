@@ -1,12 +1,17 @@
 use std::str::FromStr;
-use crate::ltree::{LTerm,lterm_value,lterm_symbol,lterm_app,lterm_sapp};
+use crate::ltree::{
+    LTerm,
+    lterm_value,
+    lterm_symbol,
+    lterm_app, lterm_sapp
+};
 use crate::value::{Value};
 
 grammar;
 
 pub Expr: Box<LTerm> = {
     <BinaryExpr>
-};
+}
 
 pub BinaryExpr: Box<LTerm> = {
     #[precedence(level="0")]
@@ -30,8 +35,9 @@ pub BinaryExpr: Box<LTerm> = {
 pub UnaryExpr: Box<LTerm> = {
     <PrimaryExpr>,
     "(" <Expr> ")",
+    "'" <a:UnaryExpr>   => lterm_value(Value::QuotedExpr(a)),
     "-" <a:UnaryExpr>	=> lterm_app("neg", vec![*a])
-}   
+}
 
 pub PrimaryExpr: Box<LTerm> = {
     Num						=> lterm_value(Value::Int64(<>)),
