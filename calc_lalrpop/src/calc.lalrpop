@@ -1,0 +1,44 @@
+use std::str::FromStr;
+use crate::ltree::{LTerm,lterm_value,lterm_symbol,lterm_app,lterm_sapp};
+use crate::value::{Value};
+
+grammar;
+
+pub Expr: Box<LTerm> = {
+    <BinaryExpr>
+};
+
+pub BinaryExpr: Box<LTerm> = {
+    #[precedence(level="0")]
+    <UnaryExpr>,
+
+    #[precedence(level="1")]
+    #[assoc(side="right")]
+    <a:BinaryExpr> "^" <b:BinaryExpr> => lterm_app("exp", vec![*a,*b]),
+
+    #[precedence(level="2")]
+    #[assoc(side="left")]
+    <a:BinaryExpr> "*" <b:BinaryExpr> => lterm_app("mul", vec![*a,*b]),
+    <a:BinaryExpr> "/" <b:BinaryExpr> => lterm_app("div", vec![*a,*b]),
+
+    #[precedence(level="3")]
+    #[assoc(side="left")]
+    <a:BinaryExpr> "+" <b:BinaryExpr> => lterm_app("add", vec![*a,*b]),
+    <a:BinaryExpr> "-" <b:BinaryExpr> => lterm_app("sub", vec![*a,*b]),
+}
+
+pub UnaryExpr: Box<LTerm> = {
+    <PrimaryExpr>,
+    "(" <Expr> ")",
+    "-" <a:UnaryExpr>	=> lterm_app("neg", vec![*a])
+}   
+
+pub PrimaryExpr: Box<LTerm> = {
+    Num						=> lterm_value(Value::Int64(<>)),
+    Symbol					=> lterm_symbol(<>),
+    <s:Symbol> "(" <a:Expr> ")"			=> lterm_sapp(s, vec![*a]),
+    <s:Symbol> "(" <a:Expr> "," <b:Expr> ")"    => lterm_sapp(s, vec![*a,*b]),
+}
+
+Num: i64	= <r"[0-9]+">	    => i64::from_str(<>).unwrap();
+Symbol: String	= <r"[\w--\d]\w*">  => <>.to_string();
