@@ -19,7 +19,7 @@ pub BinaryExpr: Box<LTerm> = {
 
     #[precedence(level="1")]
     #[assoc(side="right")]
-    <a:BinaryExpr> "^" <b:BinaryExpr> => lterm_app("exp", vec![*a,*b]),
+    <a:BinaryExpr> "^" <b:BinaryExpr> => lterm_app("pow", vec![*a,*b]),
 
     #[precedence(level="2")]
     #[assoc(side="left")]

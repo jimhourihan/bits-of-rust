@@ -10,6 +10,7 @@ use std::cell::{RefCell,Ref,RefMut};
 use std::ops::{Add,Sub,Mul,Div};
 use crate::value::Value;
 use crate::context::{Symbol,SymbolType,Context};
+use crate::ltree::{LTerm};
 
 #[derive(Debug,Clone)]
 pub struct ExprTree {
@@ -23,13 +24,17 @@ pub struct ETermID(u32);
 #[derive(Debug,Clone)]
 pub enum ETerm {
     ValueTerm(Value),
+    DerefTerm(Rc<Symbol>),
     ApplicationTerm {
 	symbol: Rc<Symbol>,
 	args: Vec<ETermID>,
     },
 }
 
-pub struct EvalContext {}
+pub struct EvalContext<'a> {
+    context: &'a Context,
+    stack: Vec<Value>,
+}
 
 #[derive(Debug,Clone)]
 pub struct EvalFunc(fn(&EvalContext,&[ETerm],&ETerm,&[ETermID])->Value);
@@ -45,6 +50,7 @@ impl ETerm {
 		}
 	    }
 	    ETerm::ValueTerm(v) => v.clone(),
+	    ETerm::DerefTerm(ref s) => Value::Error, // TODO
 	    //_ => Value::Unit
 	}
     }
@@ -76,6 +82,12 @@ impl ExprTree {
 	ETermID(self.storage.len() as u32)
     }
 
+    pub fn new_deref_term (&mut self, symbol: Rc<Symbol>) -> ETermID {
+	let id = self.next_id();
+	self.storage.push(ETerm::DerefTerm(symbol));
+	id
+    }
+
     pub fn new_symbol_term (&mut self, symbol: Rc<Symbol>, args: Vec<ETermID>) -> ETermID {
 	let id = self.next_id();
 	self.storage.push(ETerm::ApplicationTerm { symbol, args });
@@ -90,7 +102,7 @@ impl ExprTree {
 
     pub fn eval_root (&self) -> Value {
 	if self.storage.len() > 0 {
-	    let context = EvalContext{};
+	    let context = EvalContext{ context: &self.context };
 	    self.storage.last().unwrap().eval(&context, self.storage.as_slice())
 	} else {
 	    Value::Unit
@@ -176,16 +188,48 @@ pub fn init_functions (context: &mut Context) {
     context.add_symbol("pow".to_string(), SymbolType::Function(EvalFunc(exp)));
 }
 
+pub fn convert (lterm: Box<LTerm>) -> Result<ExprTree,String> {
+
+    fn convert_rec (lterm: &LTerm, etree: &mut ExprTree) -> Result<ETermID,String> {
+	match *lterm {
+	    LTerm::ValueTerm(ref x) => Result::Ok(etree.new_value_term(x.clone())),
+	    LTerm::DerefTerm(ref name) => {
+		let sym = etree.context.find_or_add_symbol(&name, SymbolType::Variable);
+		Result::Ok(etree.new_deref_term(sym))
+	    },
+	    LTerm::ApplicationTerm { ref symbol, ref args } => {
+		if let Some(sym) = etree.context.find_symbol(&symbol) {
+		    let new_args = args.iter()
+			.map(|t| convert_rec(&t, etree))
+			.collect::<Result<Vec<ETermID>,String>>()?;
+		    Result::Ok(etree.new_symbol_term(sym, new_args))
+		} else {
+		    // couldn't find the function
+		    Result::Err(format!("Can't find function {symbol}"))
+		}
+	    }
+	}
+    }
+
+    let mut etree = ExprTree::new();
+    init_functions(&mut etree.context);
+    if let Err(e) = convert_rec(&*lterm, &mut etree) {
+	Result::Err(e)
+    } else {
+	Result::Ok(etree)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     #[test]
     fn testoo () {
 	let mut etree = ExprTree::new();
-	init_functions(etree.context);
-	let one_id = etree.new_value_term(Value::Int64((1)));
-	let two_id = etree.new_value_term(Value::Int64((2)));
-	let three_id = etree.new_value_term(Value::Int64((3)));
+	init_functions(&mut etree.context);
+	let one_id = etree.new_value_term(Value::Int64(1));
+	let two_id = etree.new_value_term(Value::Int64(2));
+	let three_id = etree.new_value_term(Value::Int64(3));
 	let plus_sym = etree.context.find_symbol("add").unwrap();
 	let mult_sym = etree.context.find_symbol("mul").unwrap();
 	let added_id = etree.new_symbol_term(plus_sym, vec![one_id, two_id]);
