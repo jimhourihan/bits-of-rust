@@ -33,7 +33,6 @@ pub enum ETerm {
 
 pub struct EvalContext<'a> {
     context: &'a Context,
-    stack: Vec<Value>,
 }
 
 #[derive(Debug,Clone)]
