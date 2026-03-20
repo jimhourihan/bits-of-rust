@@ -47,7 +47,7 @@ pub struct AddNode {
 }
 
 fn new_add_expr (a: Expr, b: Expr) -> Expr {
-    Box::new( AddNode { a: a, b: b } )
+    Box::new( AddNode { a, b } )
 }
 
 impl Node<Context,f32> for AddNode {
@@ -62,7 +62,7 @@ pub struct MultNode {
 }
 
 fn new_mult_expr (a: Expr, b: Expr) -> Expr {
-    Box::new( MultNode { a: a, b: b } )
+    Box::new( MultNode { a, b } )
 }
 
 impl Node<Context,f32> for MultNode {
@@ -71,12 +71,7 @@ impl Node<Context,f32> for MultNode {
     }
 }
 
-// rust's type "()" is the unit type (only a single value which is also
-// called "()"). In practice its used like "void" in C/C++ but makes more
-// sense when everything is an expression (meaning it has a type and
-// computes to a value).
-
-fn main () -> () {
+fn main () {
 
     // (1+2) * (3+4) -> 21
     let a = new_float_constant(1_f32);
@@ -92,6 +87,4 @@ fn main () -> () {
     let result = expr.evaluate(&context);
 
     println!("result -> {}", result);
-    return () // this is unnecessary -- its the default if the scope ends
-              // in ';'
 }
