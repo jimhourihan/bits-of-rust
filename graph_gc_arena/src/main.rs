@@ -1,5 +1,7 @@
+use std::thread;
 
 use gc_arena::{self, Arena, Collect, Gc, Rootable, lock::RefLock};
+
 
 #[derive(Debug,Collect)]
 #[collect(no_drop)]
@@ -74,10 +76,14 @@ fn main() {
         //
     });
 
+    // Can't use it across threads :(
+    // let t = thread::spawn(|| {
+    //     &arena.mutate(|_, root| {
+    //         dbg!(root.objects.first().unwrap().borrow());
+    //     });
+    // });
+
     arena.mutate(|_, root| {
         dbg!(root.objects.first().unwrap().borrow());
     });
-
-    dbg!(std::mem::size_of::<Node>());
-    dbg!(std::mem::size_of::<RefLock<Node>>());
 }
