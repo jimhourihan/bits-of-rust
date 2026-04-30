@@ -4,6 +4,7 @@ use std::{
     ops::Deref,
     ptr::NonNull,
     sync::{Arc, RwLock},
+    mem::{transmute}
 };
 
 struct BBInner<T> {
@@ -24,6 +25,15 @@ impl<'arena, T> Copy for BBPtr<'arena, T> {}
 
 unsafe impl<'arena, T: Send> Send for BBPtr<'arena, T> {}
 unsafe impl<'arena, T: Send + Sync> Sync for BBPtr<'arena, T> {}
+
+unsafe impl<'arena> Sync for Graph<'arena> {}
+// SAFETY: Node/Edge contain only BBPtrs and owned data (String, Vec).
+// The compiler can't derive Sync due to circular BBPtr<->Node/Edge references,
+// but concurrent reads are safe when the read lock is held.
+unsafe impl<'arena> Send for Node<'arena> {}
+unsafe impl<'arena> Sync for Node<'arena> {}
+unsafe impl<'arena> Send for Edge<'arena> {}
+unsafe impl<'arena> Sync for Edge<'arena> {}
 
 impl<'arena, T> BBPtr<'arena, T> {
     pub fn get<'e>(&'e self, _: &'e ReadAccess<'arena>) -> &'e T {
@@ -77,7 +87,7 @@ impl<'arena> Graph<'arena> {
         // SAFETY: Only the phantom 'arena brand changes. All actual data lives for
         // the graph's true lifetime which exceeds 'a. R doesn't mention 'a so
         // BBPtrs can't escape the closure.
-        f(unsafe { std::mem::transmute(self) },
+        f(unsafe { transmute::<&mut Graph<'_>, &mut Graph<'_>>(self) },
           Access { read: ReadAccess { _marker: PhantomData } })
     }
 
@@ -87,7 +97,7 @@ impl<'arena> Graph<'arena> {
     {
         let lock = self.lock.clone();
         let _guard = lock.read().unwrap();
-        f(unsafe { std::mem::transmute(self) },
+        f(unsafe { transmute::<&Graph<'_>, &Graph<'_>>(self) },
           ReadAccess { _marker: PhantomData })
     }
 }
@@ -151,10 +161,19 @@ fn main() {
         n1.get_mut(&mut access).outgoing_edges.push(e1);
         n2.get_mut(&mut access).incoming_edges.push(e1);
     });
-    g.traverse(|graph, access| {
-        if let Some(root) = graph.root_node {
-            let node = root.get(&access);
-            println!("root: {}, outgoing edges: {}", node.name, node.outgoing_edges.len());
+
+    let g_ref = &g;
+    std::thread::scope(|s| {
+        for thread_id in 0..4 {
+            s.spawn(move || {
+                g_ref.traverse(|graph, access| {
+                    if let Some(root) = graph.root_node {
+                        let node = root.get(&access);
+                        println!("thread {thread_id}: root={}, outgoing edges={}",
+                            node.name, node.outgoing_edges.len());
+                    }
+                });
+            });
         }
     });
 }
