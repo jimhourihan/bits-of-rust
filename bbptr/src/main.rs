@@ -1,6 +1,7 @@
 use std::{
     cell::UnsafeCell,
     marker::PhantomData,
+    ops::Deref,
     ptr::NonNull,
     sync::{Arc, RwLock},
 };
@@ -25,7 +26,7 @@ unsafe impl<'arena, T: Send> Send for BBPtr<'arena, T> {}
 unsafe impl<'arena, T: Send + Sync> Sync for BBPtr<'arena, T> {}
 
 impl<'arena, T> BBPtr<'arena, T> {
-    pub fn get<'e>(&'e self, _: &'e Access<'arena>) -> &'e T {
+    pub fn get<'e>(&'e self, _: &'e ReadAccess<'arena>) -> &'e T {
         unsafe { &*(*self.ptr.as_ptr()).obj.get() }
     }
 
@@ -34,8 +35,17 @@ impl<'arena, T> BBPtr<'arena, T> {
     }
 }
 
-pub struct Access<'arena> {
+pub struct ReadAccess<'arena> {
     _marker: PhantomData<fn(&'arena ()) -> &'arena ()>,
+}
+
+pub struct Access<'arena> {
+    read: ReadAccess<'arena>,
+}
+
+impl<'arena> Deref for Access<'arena> {
+    type Target = ReadAccess<'arena>;
+    fn deref(&self) -> &ReadAccess<'arena> { &self.read }
 }
 
 
@@ -58,22 +68,27 @@ impl<'arena> Graph<'arena> {
         }
     }
 
-    pub fn edit<F, R>(&'arena mut self, f: F) -> R
+    pub fn edit<F, R>(&mut self, f: F) -> R
     where
         F: for<'a> FnOnce(&'a mut Graph<'a>, Access<'a>) -> R
     {
         let lock = self.lock.clone();
         let _guard = lock.write().unwrap();
-        f(self, Access { _marker: PhantomData })
+        // SAFETY: Only the phantom 'arena brand changes. All actual data lives for
+        // the graph's true lifetime which exceeds 'a. R doesn't mention 'a so
+        // BBPtrs can't escape the closure.
+        f(unsafe { std::mem::transmute(self) },
+          Access { read: ReadAccess { _marker: PhantomData } })
     }
 
-    pub fn traverse<F, R>(&'arena self, f: F) -> R
+    pub fn traverse<F, R>(&self, f: F) -> R
     where
-        F: for<'a> FnOnce(&'a Graph<'a>) -> R
+        F: for<'a> FnOnce(&'a Graph<'a>, ReadAccess<'a>) -> R
     {
         let lock = self.lock.clone();
         let _guard = lock.read().unwrap();
-        f(self)
+        f(unsafe { std::mem::transmute(self) },
+          ReadAccess { _marker: PhantomData })
     }
 }
 
@@ -135,5 +150,11 @@ fn main() {
         graph.root_node = Some(n1);
         n1.get_mut(&mut access).outgoing_edges.push(e1);
         n2.get_mut(&mut access).incoming_edges.push(e1);
+    });
+    g.traverse(|graph, access| {
+        if let Some(root) = graph.root_node {
+            let node = root.get(&access);
+            println!("root: {}, outgoing edges: {}", node.name, node.outgoing_edges.len());
+        }
     });
 }
