@@ -4,13 +4,17 @@ use std::{
     ops::Deref,
     ptr::NonNull,
     sync::{Arc, RwLock},
-    mem::{transmute}
+    mem::{transmute},
+    thread,
 };
 
 struct BBInner<T> {
     obj: UnsafeCell<T>,
 }
 
+// Everything revolves around creating this pointer type that allows inner
+// references safely. The specific use case is for a complex graph
+// structure. 
 #[derive(Debug)]
 pub struct BBPtr<'arena, T> {
     ptr: NonNull<BBInner<T>>,
@@ -84,9 +88,9 @@ impl<'arena> Graph<'arena> {
     {
         let lock = self.lock.clone();
         let _guard = lock.write().unwrap();
-        // SAFETY: Only the phantom 'arena brand changes. All actual data lives for
-        // the graph's true lifetime which exceeds 'a. R doesn't mention 'a so
-        // BBPtrs can't escape the closure.
+        // Only the phantom 'arena brand changes. All actual data lives for
+        // the graph's true lifetime which exceeds 'a. R doesn't mention 'a
+        // so BBPtrs can't escape the closure.
         f(unsafe { transmute::<&mut Graph<'_>, &mut Graph<'_>>(self) },
           Access { read: ReadAccess { _marker: PhantomData } })
     }
@@ -109,9 +113,16 @@ pub struct Arena<'arena, T> {
 
 impl<'arena, T> Arena<'arena, T> {
     pub fn alloc(&mut self, obj: T) -> BBPtr<'arena, T> {
-        let mut boxed = Box::new(BBInner { obj: UnsafeCell::new(obj) });
-        let ptr = NonNull::from(boxed.as_mut());
-        self.nodes.push(boxed);
+        // NOTE: this is attempting to make miri happy by forcing the owner
+        // of the pointed to object to unambiguously be the Vec.
+        // WARNING: this code was suggested by Claude
+        let raw = Box::into_raw(Box::new(BBInner { obj: UnsafeCell::new(obj) }));
+        let ptr = unsafe { NonNull::new_unchecked(raw) };
+        self.nodes.push(unsafe { Box::from_raw(raw) });
+        // Previous code:
+        //      let mut boxed = Box::new(BBInner { obj: UnsafeCell::new(obj) });
+        //      let ptr = NonNull::from(boxed.as_mut());
+        //      self.nodes.push(boxed);
         BBPtr { ptr, _marker: PhantomData }
     }
 }
@@ -160,20 +171,43 @@ fn main() {
         graph.root_node = Some(n1);
         n1.get_mut(&mut access).outgoing_edges.push(e1);
         n2.get_mut(&mut access).incoming_edges.push(e1);
+
+        // graph.root_node ┄┄▷ n1 ──▷ n2
     });
 
     let g_ref = &g;
-    std::thread::scope(|s| {
+    thread::scope(|s| {
         for thread_id in 0..4 {
             s.spawn(move || {
                 g_ref.traverse(|graph, access| {
-                    if let Some(root) = graph.root_node {
-                        let node = root.get(&access);
+                    if let Some(n1) = graph.root_node {
+                        let node = n1.get(&access);
                         println!("thread {thread_id}: root={}, outgoing edges={}",
                             node.name, node.outgoing_edges.len());
                     }
                 });
             });
+        }
+    });
+
+    g.edit(|graph, mut access| {
+        if let Some(n1) = graph.root_node {
+            // bbptr copies need to be used so access doesn't continue to
+            // be borrowed.
+            let e1 = n1.get(&access).outgoing_edges.first().copied().unwrap();
+            let n2 = e1.get(&access).out_node;
+            let n3 = graph.node_arena.alloc(Node::new("n3"));
+            let e2 = graph.edge_arena.alloc(Edge::new(n2, n3));
+            let e3 = graph.edge_arena.alloc(Edge::new(n1, n3));
+
+            n2.get_mut(&mut access).outgoing_edges.push(e2);
+            n3.get_mut(&mut access).incoming_edges.push(e2);
+            n1.get_mut(&mut access).outgoing_edges.push(e3);
+            n3.get_mut(&mut access).incoming_edges.push(e3);
+
+            // graph.root_node ┄┄▷ n1 ──▷ n2 ──╮
+            //                      │          ▽
+            //                      ╰────────▷ n3
         }
     });
 }
